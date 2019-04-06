@@ -41,7 +41,11 @@
 #define DATA_PIN 18
 CRGB leds[NUM_LEDS];
 
+//IPAddress ip(192,168,1,200);
+//IPAddress gateway(192,168,1,254);
+//IPAddress subnet(255,255,255,0);
 WiFiServer server(80);
+
 WiFiClient wifiClient;
 MQTTClient mqttClient;
 
@@ -145,7 +149,7 @@ void setup() {
   delay(10);
 
   // Initialize WiFi
-
+//  WiFi.config(ip, gateway, subnet);
   WiFi.begin(ssid, password);
   connectWiFi();
   
