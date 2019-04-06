@@ -45,8 +45,13 @@ WiFiServer server(80);
 WiFiClient wifiClient;
 MQTTClient mqttClient;
 
-void connectMqtt()
-{
+
+
+void messageReceived(String &topic, String &payload) {
+  Serial.println("incoming MQTT message: " + topic + " - " + payload);
+}
+
+void connectMqtt() {
   Serial.println();
   Serial.print("Connecting to MQTT broker...\nClient Id:");
   Serial.println(mqttClientId);
@@ -64,17 +69,11 @@ void connectMqtt()
   Serial.println("");
   Serial.println("MQTT connected.");
 
-  mqttClient.subscribe("nodemcu");
-  // mqttClient.unsubscribe("nodemcu");
+  mqttClient.subscribe("nodemcu/signal");   // for subs, not publish
+  // mqttClient.unsubscribe("nodemcu/signal");
 }
 
-void messageReceived(String &topic, String &payload)
-{
-  Serial.println("incoming MQTT message: " + topic + " - " + payload);
-}
-
-void connectWiFi()
-{
+void connectWiFi() {
   Serial.println();
   Serial.print("Connecting to wifi...\nSSID: ");
   Serial.println(ssid);
@@ -85,11 +84,52 @@ void connectWiFi()
   }
 
   Serial.println("");
-  Serial.println("WiFi connected.\nIP address: "+ WiFi.localIP());
+  Serial.print("WiFi connected.\nIP address: ");
+  Serial.println(WiFi.localIP());
 }
 
-void setup()
-{
+void processRequest(String signal) {
+  mqttClient.publish("nodemcu/signal", signal);
+  Serial.println("--> " + signal);
+  
+  if (signal == "red") {
+    leds[0] = CRGB::Red;
+  }
+  if (signal == "blue") {
+    leds[0] = CRGB::Blue;
+  }
+  if (signal == "green") {
+    leds[0] = CRGB::Green;
+  }
+  if (signal == "off") {
+    leds[0] = CRGB::Black;
+  }
+  
+  FastLED.show();
+  delay(500);
+}
+
+void sendHttpResponseToClient(WiFiClient client) {
+  
+  // HTTP headers always start with a response code (e.g. HTTP/1.1 200 OK)
+  // and a content-type so the client knows what's coming, then a blank line:
+  client.println("HTTP/1.1 200 OK");
+  client.println("Content-type:text/html");
+  client.println();
+
+  // the content of the HTTP response follows the header:
+  client.print("<h2>LED is defined on pin <b>" + String(DATA_PIN) + "</b></h2><br>");
+  client.print("Click <a href=\"/red\">here</a> to turn the LED <strong>red</strong><br>");
+  client.print("Click <a href=\"/green\">here</a> to turn the LED <strong>green</strong><br>");
+  client.print("Click <a href=\"/blue\">here</a> to turn the LED <strong>blue</strong><br>");
+  client.print("Click <a href=\"/off\">here</a> to turn the LED off.<br>");
+
+  // The HTTP response ends with another blank line:
+  client.println();
+  
+}
+
+void setup() {
   pinMode (LED_BUILTIN, OUTPUT);
   pinMode (DATA_PIN, OUTPUT);
   
@@ -128,37 +168,32 @@ void loop() {
 
   // FASTLED : begin
   
-  WiFiClient client = server.available();   // listen for incoming clients
+  WiFiClient client = server.available();
 
-  if (client) {                             // if you get a client,
-    Serial.println("New Client.");           // print a message out the serial port
-    String currentLine = "";                // make a String to hold incoming data from the client
-    while (client.connected()) {            // loop while the client's connected
-      if (client.available()) {             // if there's bytes to read from the client,
-        char c = client.read();             // read a byte, then
-        Serial.write(c);                    // print it out the serial monitor
-        if (c == '\n') {                    // if the byte is a newline character
+  if (client) {
+    Serial.print("New Client @ ");
+    Serial.println(client.remoteIP());
+    
+    digitalWrite(LED_BUILTIN, HIGH);
+    delay(50);
+    
+    String currentLine = "";
 
+    // while the client's connected, process input bytes 
+    while (client.connected()) {
+      if (client.available()) {
+          
+        // read a byte and print out to serial monitor
+        char c = client.read();
+        Serial.write(c);
+        
+        if (c == '\n') {
           // if the current line is blank, you got two newline characters in a row.
           // that's the end of the client HTTP request, so send a response:
           if (currentLine.length() == 0) {
-            // HTTP headers always start with a response code (e.g. HTTP/1.1 200 OK)
-            // and a content-type so the client knows what's coming, then a blank line:
-            client.println("HTTP/1.1 200 OK");
-            client.println("Content-type:text/html");
-            client.println();
-
-            // the content of the HTTP response follows the header:
-            client.print("LED is defined on pin <b>" + String(DATA_PIN) + "</b><br>");
-            client.print("Click <a href=\"/red\">here</a> to turn the LED on<br>");
-            client.print("Click <a href=\"/green\">here</a> to turn the LED off<br>");
-            client.print("Click <a href=\"/blue\">here</a> to turn the LED off<br>");
-            client.print("Click <a href=\"/off\">here</a> to turn the LED on pin <b>" + String(DATA_PIN) + "</b> off.<br>");
-
-            // The HTTP response ends with another blank line:
-            client.println();
-            // break out of the while loop:
+            sendHttpResponseToClient(client);
             break;
+            
           } else {    // if you got a newline, then clear currentLine:
             currentLine = "";
           }
@@ -166,39 +201,23 @@ void loop() {
           currentLine += c;      // add it to the end of the currentLine
         }
 
-        // Check to see if the client request was "GET /H" or "GET /L":
+        // Check and processs request if the client request was valid
         if (currentLine.endsWith("GET /red")) {
-          Serial.println("--> High");
-          digitalWrite(LED_BUILTIN, HIGH);               // GET /H turns the LED on
-          delay(50);
-          leds[0] = CRGB::Red;
-          FastLED.show();
-          delay(500);
+          processRequest("red");
         }
         if (currentLine.endsWith("GET /green")) {
-          Serial.println("--> Low");
-          digitalWrite(LED_BUILTIN, LOW);                // GET /L turns the LED off
-          delay(50);
-          leds[0] = CRGB::Green;
-          FastLED.show();
-          delay(500);
+          processRequest("green");
         }
         if (currentLine.endsWith("GET /blue")) {
-          Serial.println("--> Low");
-          digitalWrite(LED_BUILTIN, LOW);                // GET /L turns the LED off
-          delay(50);
-          leds[0] = CRGB::Blue;
-          FastLED.show();
-          delay(500);
+          processRequest("blue");
         }
         if (currentLine.endsWith("GET /off")) {
-          Serial.println("--> Off");
-          leds[0] = CRGB::Black;
-          FastLED.show();
-          delay(500);
+          processRequest("off");
         }
       }
     }
+    digitalWrite(LED_BUILTIN, LOW);
+    delay(50);
     
     client.stop();
     Serial.println("Client Disconnected.");
