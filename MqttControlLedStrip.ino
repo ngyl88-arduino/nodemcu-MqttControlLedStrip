@@ -26,7 +26,7 @@
   [MQTT Ref]
   https://github.com/256dpi/arduino-mqtt
   https://www.teachmemicro.com/nodemcu-mqtt-tutorial
-  https://shiftr.io/try#terminal (curl -X POST "http://try:try@broker.shiftr.io/nodemcu/test" -d "Hi from Terminal")
+  https://shiftr.io/try#terminal (curl -X POST "http://try:try@broker.shiftr.io/nodemcu/signal" -d "Hello World")
 */
 
 #include "secret.h"
@@ -49,6 +49,12 @@ MQTTClient mqttClient;
 
 void messageReceived(String &topic, String &payload) {
   Serial.println("incoming MQTT message: " + topic + " - " + payload);
+
+  if(payload == "Hello World") {
+    digitalWrite(LED_BUILTIN, HIGH);
+  } else {
+    digitalWrite(LED_BUILTIN, LOW); 
+  }
 }
 
 void connectMqtt() {
